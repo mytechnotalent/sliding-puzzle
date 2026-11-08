@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="theme-color" content="#0f1116" />
+    <title>Sliding Puzzle</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
+    <link rel="apple-touch-icon" href="icons/icon-180.png" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header class="bar">
+        <h1>Sliding Puzzle</h1>
+      </header>
+
+      <section class="stats" aria-live="polite">
+        <p><span class="label">Moves</span><span id="moves">0</span></p>
+        <p><span class="label">Time</span><span id="time">0:00</span></p>
+      </section>
+
+      <div id="board" class="board" role="grid" aria-label="Puzzle board"></div>
+
+      <button id="shuffle" class="shuffle" type="button">Shuffle</button>
+
+      <p id="status" class="status" role="status">Loading...</p>
+
+      <p class="credits">
+        Photographs are CC0. <a href="photos/credits.json">Credits</a>
+      </p>
+    </main>
+
+    <script type="module" src="game.js"></script>
+  </body>
+</html>
