@@ -2,14 +2,14 @@
  * Sliding Puzzle service worker.
  * File: web/sw.js
  * Author: Kevin Thomas
- * Date: 2026-11-08
+ * Date: 2026-11-14
  *
  * MIT License, see the LICENSE file for the full text.
  *
  * Caches the whole game on first load so it runs with no network.
  */
 
-const CACHE_NAME = "sliding-puzzle-v2";
+const CACHE_NAME = "sliding-puzzle-v3";
 
 const SHELL_FILES = [
   "./",

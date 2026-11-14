@@ -2,11 +2,14 @@
  * Sliding Puzzle
  * File: web/game.js
  * Author: Kevin Thomas
- * Date: 2026-11-08
+ * Date: 2026-11-14
  *
  * MIT License, see the LICENSE file for the full text.
  *
- * Loads the Rust compiled WebAssembly module and draws the board.
+ * Loads the Rust compiled WebAssembly module and draws the board. The exact
+ * puzzle position, move count, clock, and picture are saved to local storage
+ * after every slide and restored when the page is reopened, so a puzzle can
+ * be worked on for as long as desired. Only the Shuffle button starts fresh.
  */
 
 const SIZE = 4;
@@ -15,6 +18,8 @@ const BLANK = 0;
 const OUT_OF_RANGE = 255;
 const WASM_FILE = "puzzle.wasm";
 const CREDITS_FILE = "photos/credits.json";
+const SAVE_KEY = "sliding-puzzle-save";
+const SAVE_VERSION = 1;
 
 const boardEl = document.querySelector("#board");
 const movesEl = document.querySelector("#moves");
@@ -26,6 +31,11 @@ let api = null;
 let tiles = [];
 let photos = [];
 let currentPhoto = "";
+let currentTitle = "";
+let currentSeed = 0;
+let slideHistory = "";
+let gameSolved = false;
+let finalElapsed = 0;
 let startedAt = 0;
 let ticker = 0;
 
@@ -105,17 +115,21 @@ function createTiles() {
 
 /**
  * Chooses a photograph and applies it to every tile.
+ * @param {string} [file] A saved photo file to reuse, empty for a random pick.
  * @returns {string} The title of the chosen photograph.
  */
-function applyPhoto() {
+function applyPhoto(file = "") {
   if (photos.length === 0) {
     boardEl.classList.add("numbers");
+    currentPhoto = "";
     return "Numbered tiles";
   }
-  let index = Math.floor(Math.random() * photos.length);
-  const chosen = photos[index];
-  if (photos.length > 1 && chosen.file === currentPhoto) {
-    index = (index + 1) % photos.length;
+  let index = photos.findIndex((photo) => photo.file === file);
+  if (index < 0) {
+    index = Math.floor(Math.random() * photos.length);
+    if (photos.length > 1 && photos[index].file === currentPhoto) {
+      index = (index + 1) % photos.length;
+    }
   }
   currentPhoto = photos[index].file;
   const loaded = new Image();
@@ -190,12 +204,13 @@ function updateClock() {
 
 /**
  * Starts the game clock.
+ * @param {number} elapsedSeconds Seconds already spent on the puzzle.
  * @returns {void}
  */
-function startClock() {
+function startClock(elapsedSeconds = 0) {
   window.clearInterval(ticker);
-  startedAt = Date.now();
-  timeEl.textContent = "0:00";
+  startedAt = Date.now() - elapsedSeconds * 1000;
+  timeEl.textContent = formatTime(elapsedSeconds);
   ticker = window.setInterval(updateClock, 500);
 }
 
@@ -205,9 +220,120 @@ function startClock() {
  */
 function celebrate() {
   window.clearInterval(ticker);
+  gameSolved = true;
+  finalElapsed = Math.floor((Date.now() - startedAt) / 1000);
+  timeEl.textContent = formatTime(finalElapsed);
   const moves = api.puzzle_moves();
   statusEl.textContent = `Solved in ${moves} moves and ${timeEl.textContent}.`;
   statusEl.classList.add("won");
+  saveGame();
+}
+
+/**
+ * Reads the saved game from local storage.
+ * @returns {object|null} The save record, or null when missing or invalid.
+ */
+function loadSave() {
+  let raw = null;
+  try {
+    raw = window.localStorage.getItem(SAVE_KEY);
+  } catch (error) {
+    console.warn("could not read saved progress", error);
+    return null;
+  }
+  if (!raw) {
+    return null;
+  }
+  try {
+    const save = JSON.parse(raw);
+    const valid =
+      save.version === SAVE_VERSION &&
+      Number.isInteger(save.seed) &&
+      save.seed >= 0 &&
+      save.seed <= 4294967295 &&
+      typeof save.slides === "string" &&
+      /^[0-9a-f]*$/.test(save.slides) &&
+      typeof save.photo === "string" &&
+      typeof save.title === "string" &&
+      Number.isInteger(save.elapsed) &&
+      save.elapsed >= 0 &&
+      typeof save.solved === "boolean";
+    return valid ? save : null;
+  } catch (error) {
+    console.warn("saved progress is unreadable", error);
+    return null;
+  }
+}
+
+/**
+ * Writes the current game to local storage.
+ * @returns {void}
+ */
+function saveGame() {
+  if (!api) {
+    return;
+  }
+  const cells = [];
+  for (let index = 0; index < CELLS; index += 1) {
+    cells.push(api.puzzle_tile(index));
+  }
+  const elapsed = gameSolved
+    ? finalElapsed
+    : Math.floor((Date.now() - startedAt) / 1000);
+  const save = {
+    version: SAVE_VERSION,
+    seed: currentSeed,
+    slides: slideHistory,
+    cells,
+    moves: api.puzzle_moves(),
+    photo: currentPhoto,
+    title: currentTitle,
+    elapsed,
+    solved: gameSolved,
+  };
+  try {
+    window.localStorage.setItem(SAVE_KEY, JSON.stringify(save));
+  } catch (error) {
+    console.warn("could not save progress", error);
+  }
+}
+
+/**
+ * Restores a saved game so the player resumes the exact same position.
+ * @param {object} save The save record produced by saveGame.
+ * @returns {boolean} True when the saved position was restored.
+ */
+function restoreGame(save) {
+  currentSeed = save.seed;
+  slideHistory = "";
+  api.puzzle_new(save.seed);
+  for (const digit of save.slides) {
+    const index = Number.parseInt(digit, 16);
+    if (api.puzzle_slide(index) !== 1) {
+      return false;
+    }
+    slideHistory += digit;
+  }
+  for (let index = 0; index < CELLS; index += 1) {
+    if (api.puzzle_tile(index) !== save.cells[index]) {
+      return false;
+    }
+  }
+  gameSolved = save.solved;
+  finalElapsed = save.elapsed;
+  const restoredTitle = applyPhoto(save.photo);
+  currentTitle = save.title || restoredTitle;
+  render();
+  statusEl.classList.remove("won");
+  if (gameSolved) {
+    timeEl.textContent = formatTime(finalElapsed);
+    statusEl.textContent = `Solved in ${api.puzzle_moves()} moves and ${timeEl.textContent}.`;
+    statusEl.classList.add("won");
+  } else {
+    statusEl.textContent = currentTitle;
+    startClock(save.elapsed);
+  }
+  return true;
 }
 
 /**
@@ -215,13 +341,17 @@ function celebrate() {
  * @returns {void}
  */
 function startGame() {
-  const seed = Math.floor(Math.random() * 4294967295);
-  api.puzzle_new(seed);
-  const title = applyPhoto();
+  currentSeed = Math.floor(Math.random() * 4294967295);
+  api.puzzle_new(currentSeed);
+  slideHistory = "";
+  gameSolved = false;
+  finalElapsed = 0;
+  currentTitle = applyPhoto();
   statusEl.classList.remove("won");
-  statusEl.textContent = title;
+  statusEl.textContent = currentTitle;
   render();
   startClock();
+  saveGame();
 }
 
 /**
@@ -237,9 +367,12 @@ function onBoardTap(event) {
   if (api.puzzle_slide(index) !== 1) {
     return;
   }
+  slideHistory += index.toString(16);
   render();
   if (api.puzzle_solved() === 1) {
     celebrate();
+  } else {
+    saveGame();
   }
 }
 
@@ -271,7 +404,7 @@ async function registerOffline() {
 }
 
 /**
- * Wires up the page and begins the first game.
+ * Wires up the page and resumes the saved game, or begins the first one.
  * @returns {Promise<void>} Resolves once the game is ready.
  */
 async function main() {
@@ -285,7 +418,16 @@ async function main() {
   photos = await loadPhotos();
   boardEl.addEventListener("pointerdown", onBoardTap);
   shuffleEl.addEventListener("click", startGame);
-  startGame();
+  window.addEventListener("pagehide", saveGame);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") {
+      saveGame();
+    }
+  });
+  const save = loadSave();
+  if (!save || !restoreGame(save)) {
+    startGame();
+  }
   await registerOffline();
 }
 

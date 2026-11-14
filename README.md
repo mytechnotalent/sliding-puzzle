@@ -5,6 +5,11 @@ in Rust, compiled to WebAssembly, and driven by a small amount of plain
 JavaScript. It installs to an iPad home screen and then runs entirely
 offline.
 
+The exact puzzle position, move count, elapsed time, and picture are saved to
+local storage after every slide and restored when the page is reopened, so a
+puzzle can be worked on for as long as desired. A fresh puzzle is only dealt
+when the Shuffle button is pressed.
+
 ## Hosted app
 
 https://mytechnotalent.github.io/sliding-puzzle/
